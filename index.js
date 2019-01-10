@@ -41,7 +41,7 @@ app.on('ready', function(){
 
         //listen on new message
         socket.on('new_message', (data) => {
-            socket.emit('new_message', {message : data.message, username : socket.username});
+            io.socket.emit('new_message', {message : data.message, username : socket.username});
         })
 
         // listen on typing
