@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>Page Title</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- <link rel="stylesheet" type="text/css" media="screen" href="main.css" />
+    <script src="main.js"></script> -->
+</head>
+<body>
+    <div class="container">
+        <div class = "row">
+            <div class = "col-md-12">
+                <form id="user_box">
+                    <div class="form-group">
+                        <label>Username</label>
+                        <input type="text" class="form-control" id="username" placeholder="Username">
+                    </div>
+                    <button type="button" class="btn btn-block btn-primary" id="send_username">Send Username</button>
+                </form>
+            </div>
+        </div>
+        <div class="row">
+            <div class = "col-md-12">
+                <form id="chat_box">
+                    <div class="container">
+                        <div class="col-md-12" id="chat_room" style="margin-top: 20px; height: 180px; overflow-y: scroll;">
+    
+                        </div>
+                        <section id="feedback"></section>
+                    <!-- {{!-- <section id="chat_room">
+                        <section id="feedback"></section>
+                    </section> --}} -->
+                    </div>
+                    <div class="form-group">
+                        <label>Message</label>
+                        <textarea class="form-control" id="message" rows="3"></textarea>
+                    </div>
+                    <button type="button" class="btn btn-block btn-primary" id="send_message">Send</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <script type="text/javascript">
+        window.$ = window.Jquery = require('jquery');
+        const io = require('socket.io-client');
+        $(()=>{
+            const electron = require('electron')
+            const {ipcRenderer} = electron;
+
+            ipcRenderer.on('open:chat', (e, reply) => {
+                console.log(reply)
+            })
+
+            var socket = io.connect('http://192.168.2.75');
+
+            //buttons and input
+            var message = $("#message");
+            var username = $("#username");
+            var send_message = $("#send_message");
+            var send_username = $("#send_username");
+            var chat_room = $("#chat_room");
+            var feedback = $("#feedback");
+
+            $('#user_box').on('keyup keypress', function(e) {
+                var keyCode = e.keyCode || e.which;
+                if (keyCode === 13) {
+                    e.preventDefault();
+                    return false;
+                }
+            })
+
+            $('#chat_box').on('keypress', function(e) {
+                var keyCode = e.keyCode || e.which;
+                if (keyCode === 13) {
+                    e.preventDefault();
+                    socket.emit('new_message', {message : message.val()})
+                    message.val('');
+                    chat_room.animate({ scrollTop: $(document).height() }, "slow");
+                    return false;
+                }
+            })
+
+            //Emit message
+            send_message.click(function(){
+                socket.emit('new_message', {message : message.val()})
+                message.val('');
+                chat_room.animate({ scrollTop: $(document).height() }, "slow");
+            })
+
+            socket.on("new_message", (data) => {
+                console.log(data)
+                chat_room.append("<p class='message'>" + data.username + ": " + data.message + "</p>")
+                chat_room.animate({ scrollTop: $(document).height() }, "slow");
+            })
+
+            //Emit typing
+            message.bind("keypress", () => {
+                socket.emit('typing')
+            })
+
+            socket.on('typing', (data) => {
+                feedback.html("<p><i>"+ data.username + " is typing a message..." + "</i></p>");
+            })
+
+            //remove typing on blur
+            $("#message").blur(function() {
+                socket.emit('remove-typing');
+            });
+
+            socket.on('remove-typing', (data) => {
+                feedback.html("");
+            })
+
+
+            send_username.click(function(){
+                console.log(username.val())
+                socket.emit('change_username', {username : username.val()})
+            })
+        })
+    </script>
+</body>
+</html>
