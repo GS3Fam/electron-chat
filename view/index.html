@@ -5,11 +5,417 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <title>Page Title</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" type="text/css" media="screen" href="" />
     <!-- <link rel="stylesheet" type="text/css" media="screen" href="main.css" />
     <script src="main.js"></script> -->
 </head>
 <body>
-    <div class="container">
+    <div class="container" id="chat-cont">
+        <div class="row">
+            <div class="fl-l">
+                <div id="chat-actions">
+                    <p class="fl-l fs-09em mb-0 fw-600">GS3 Messenger</p>
+                    <div class="fl-r">
+                    <i id="cm-btn" class="zmdi zmdi-email" data-toggle='modal' data-target='#create-message'></i>
+                    </div>
+                    <div style="clear: both"></div>
+                    <input type="text" class="form-control fs-08em mt-1" placeholder="Search Conversations"/>
+                </div>
+                <div id="roomlist"></div>
+            </div>
+            <div class="fl-r">
+                <div>
+                    <userid val="{{user.id}}"></userid>
+                    <username val="{{user.name}}"></username>
+                    <room val="{{room._id}}"></room>
+                    <room-type val="{{room.type}}"></room-type>
+            
+                    <p id="room-header" class="fw-600 mb-2">{{room.name}}</p>
+                    <div id="chat">
+                    <p class="fs-08em text-muted mb-2"><em>Welcome to the chat room. </em></p>
+                    </div>
+            
+                    <form id="messageForm" enctype="multipart/form-data">
+                    <div id="emojis"></div>
+                    <textarea class="form-control" rows="4" id="message" placeholder="Enter Message" x-webkit-speech></textarea>
+                    <input type="submit" class="btn btn-sm btn-custom-primary fl-r" value="Submit">
+                    <i id="img-link" class="zmdi zmdi-link custom-primary cur-pnt"></i>
+                    </form>
+            
+                </div>
+            </div>
+        </div>
+        
+        <div class="modal fade" id="create-message" tabindex="-1" role="dialog" aria-labelledby="ModalTitle" aria-hidden="true">
+            <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                <h7 class="modal-title" id="ModalTitle">Create Message</h7>
+                <button class="close" type="button" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">×</span></button>
+                </div>
+                <div class="modal-body pt-2">
+                <form class="mb-0" action="/chat/create" method="POST">
+                    <div id="selected" class="fs-09em mb-0"></div>
+                    <input type="text" class="form-control fs-08em mt-1 search" placeholder="Search People"/>
+                    <div class="people mt-2"></div>
+                    <input type="submit" class="btn btn-sm btn-custom-primary mt-2 fl-r" value="Create"></input>
+                </form>
+                </div>
+            </div>
+            </div>
+        </div>
+        
+        <script src="../public/js/moment.js"></script>
+        <script type="text/javascript">
+            window.$ = window.Jquery = require('jquery');
+            const io = require('socket.io-client');
+            $(()=>{
+            $(`#emojis`).html(`
+                <e>👋</e>
+                <e>👍</e>
+                <e>👎</e>
+                <e>👌</e>
+                <e>🤝</e>
+                <e>😁</e>
+                <e>🆗</e>
+                <e>✍</e>
+                <e>✔</e>
+                <e>❌</e>
+                <e>💲</e>
+                <e>📆</e>
+                <e>📌</e>
+                <e>🍻</e>
+                `)
+            })
+        </script>
+        <script type="text/javascript">
+            $(() => {
+            let
+                socket = io.connect('http://192.168.2.75'),
+                message = $(`#message`),
+                chat = $(`#chat`),
+                roomlist = $(`#roomlist`),
+                chat_actions = $(`#chat-actions`)
+        
+            let
+                cm_btn = $(`#cm-btn`),
+                cm_modal = $(`#create-message`),
+                cm_people = cm_modal.find('.people'),
+                cm_selected = cm_modal.find('#selected')
+        
+            let
+                room = {
+                id: $(`room`).attr('val'),
+                type: $(`room-type`).attr('val')
+                },
+                thisUser = {
+                id: $(`userid`).attr('val'),
+                name: $(`username`).attr('val')
+                }
+        
+            // functions
+            function getPeople(){
+                let exclude = []
+        
+                cm_selected.children(`a`).each(function(){
+                exclude.push($(this).attr('userid'))
+                })
+        
+                socket.emit('people-list', {
+                userid: thisUser.id,
+                search: cm_modal.find('input.search').val(),
+                exclude: exclude
+                });
+            }
+        
+            // join room
+            socket.on('connect', ()=>{
+                socket.emit('room', room.id);
+                socket.emit('roomlist', {userid: thisUser.id, search: ''});
+                socket.emit('is-typing', {
+                userid: thisUser.id,
+                username: thisUser.name,
+                room: room.id,
+                status: false
+                });
+            })
+        
+            // message submit
+            $(`#messageForm`).submit(function(e) {
+                e.preventDefault();
+                let
+                newMessage = [],
+                img_link = $(`.img-link`)
+        
+                if(message.val() || img_link.length){
+                message.val() ?
+                    newMessage = message.val().split("\n").reduce((temp, mess)=>{
+                    temp.push(mess.replace(/</g, "&lt;").replace(/>/g, "&gt;"))
+                    return temp;
+                    }, []) : 0
+                img_link.length ? newMessage.push(`<img src="${img_link.val()}"/>`) : 0
+        
+                socket.emit('mess:send', {
+                    mess: newMessage,
+                    room: room.id,
+                    name: thisUser.name,
+                    id: thisUser.id
+                })
+                message.val('')
+                img_link.remove()
+                }
+        
+            })
+        
+            // chat area update
+            socket.on('mess:new', function(data) {
+                let
+                chat_mess = data.msg.reduce((temp, mess, i)=>{
+                    temp += i != data.msg.length-1 ? `${mess}<br>` : `${mess}`;
+                    return temp;
+                },''),
+                last_mess = chat.children().last(),
+                timestamp = moment().calendar()
+        
+                let mess_icon = thisUser.id == data.userid || room.type == 'private' ?
+                `` : `<a href="/chat/private/${data.userid}"><i class="zmdi zmdi-email cur-pnt ml-1"></i></a>`
+        
+                last_mess.attr('userid') == data.userid && last_mess.attr('ts') == timestamp ?
+                chat.append(`
+                    <p class="fs-09em mb-2" userid="${data.userid}" ts="${timestamp}">
+                    ${chat_mess}
+                    </p>`)
+                :
+                chat.append(`
+                    <p class="fs-09em mb-2" userid="${data.userid}" ts="${timestamp}">
+                    <small class="fs-08em text-muted">
+                        <span class="fw-600">${data.user} </span>
+                        ${timestamp} ${mess_icon}
+                    </small>
+                    <br>${chat_mess}
+                    </p>`)
+        
+                chat.scrollTop(chat[0].scrollHeight)
+            })
+        
+            // roomlist
+            chat_actions.children('input').keyup(function(){
+                socket.emit('roomlist', {userid: thisUser.id, search: $(this).val()});
+            })
+            socket.on('roomlist', function(data) {
+                roomlist.html(``)
+                data.forEach((room)=>{
+                roomlist.append(`
+                    <a href="/chat/${room._id}" roomid="${room._id}">
+                    <div><p class="fs-09em fw-600 mb-0">${room.name}</p></div>
+                    </a>`)
+                })
+        
+                roomlist.children(`a[roomid=${room.id}]`)
+                .removeAttr('href')
+                .children('div').css('background','var(--chat-color-2)')
+        
+            })
+        
+            // create message
+            cm_btn.click(function(){
+                getPeople()
+            })
+            cm_modal.find('input.search').on('keyup', function(){
+                getPeople()
+            })
+        
+            socket.on('people-list', function(data) {
+                cm_people.html(``)
+                data.forEach((person)=>{
+                cm_people.append(`
+                    <a href="#" class="fs-09em mb-0 blk" userid="${person._id}">${person.username}</a>
+                    `)
+                })
+        
+                cm_people.children(`a`).click(function(){
+                cm_selected.append(`
+                    <a href="#" class="fs-09em mb-0" userid="${$(this).attr('userid')}"> ${$(this).text()}
+                    <input type="text" name="members" value="${$(this).attr('userid')}" hidden>
+                    </a>`)
+        
+                cm_selected.children(`a`).click(function(){
+                    $(this).remove()
+                    getPeople()
+                })
+        
+                getPeople()
+                })
+            })
+            cm_modal.find(`form`).submit(function(e){
+                cm_selected.children(`a`).length ?
+                0 : e.preventDefault();
+            })
+        
+            // user is typing
+            message.keyup(function(){
+                if( $(this).val() ){
+                socket.emit('is-typing', {
+                    userid: thisUser.id,
+                    username: thisUser.name,
+                    room: room.id,
+                    status: true
+                });
+                }
+                else{
+                socket.emit('is-typing', {
+                    userid: thisUser.id,
+                    username: thisUser.name,
+                    room: room.id,
+                    status: false
+                });
+                }
+            })
+        
+            socket.on('typing', function(typing) {
+                let str
+                let names = typing.reduce((temp, data)=>{
+                data.userid != thisUser.id ?
+                    temp.push(data.username) : 0
+                return temp;
+                },[])
+        
+                str = names.join(", ")
+        
+                if(names.length > 1) str += " are typing"
+                    else if(names.length == 1) str += " is typing"
+                    else str = null
+        
+                if(str){
+                $(`#messageForm #is_typing`).length ?
+                    0 : $(`#messageForm`).prepend(`<p id="is_typing" class="fs-08em text-muted mb-0"></p>`)
+                $(`#messageForm #is_typing`).text(`${str}`)
+                }
+                else $(`#messageForm #is_typing`).remove()
+        
+                $(`#messageForm #is_typing`).length ?
+                chat.css('height','calc(100% - 235px)') :
+                chat.css('height','calc(100% - 215px)')
+        
+                chat.scrollTop(chat[0].scrollHeight)
+            })
+        
+            // group rename
+            let room_header = $(`#room-header`);
+        
+            room.type == 'group' ?
+                room_header.attr('contenteditable','true') : 0
+        
+            room_header.on('blur', function(){
+                socket.emit('group:rename', {room: room.id, name: $(this).text()});
+            })
+        
+            socket.on('group:rename', function(name) {
+                room_header.text(name)
+                socket.emit('roomlist', {userid: thisUser.id, search: ''});
+            })
+        
+            // extra functions
+            message.keydown(function(e) {
+                if (e.keyCode == 13) {
+                if (!e.shiftKey){
+                    e.preventDefault()
+                    message.val() ? $(`#messageForm`).submit() : 0
+                }
+                }
+            })
+            $(`#emojis > e`).click(function(){
+                message.val(message.val() + $(this).text())
+                message.focus()
+            })
+            $(`#img-link`).click(function(){
+                $(`.img-link`).length ?
+                $(`.img-link`).remove() :
+                $(this).after(`<input type="text" class="form-control img-link" placeholder="place image link" />`)
+            })
+        
+            })
+        </script>
+        
+        </div>
+              
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <!-- <div class="container">
         <div class = "row">
             <div class = "col-md-12">
                 <form id="user_box">
@@ -29,9 +435,9 @@
     
                         </div>
                         <section id="feedback"></section>
-                    <!-- {{!-- <section id="chat_room">
+                    {{!-- <section id="chat_room">
                         <section id="feedback"></section>
-                    </section> --}} -->
+                    </section> --}}
                     </div>
                     <div class="form-group">
                         <label>Message</label>
@@ -41,8 +447,8 @@
                 </form>
             </div>
         </div>
-    </div>
-    <script type="text/javascript">
+    </div> -->
+    <!-- <script type="text/javascript">
         window.$ = window.Jquery = require('jquery');
         const io = require('socket.io-client');
         $(()=>{
@@ -119,6 +525,6 @@
                 socket.emit('change_username', {username : username.val()})
             })
         })
-    </script>
+    </script> -->
 </body>
 </html>
